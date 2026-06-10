@@ -8,6 +8,14 @@
       "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAJr+hx2GrkXQLCIiInEF0bMzkc4ho1L+14j+1GlEFzjM=\n-----END PUBLIC KEY-----",
       "validFrom": "2026-06-10T00:00:00Z",
       "validUntil": null
+    },
+    {
+      "owner": "peter",
+      "algorithm": "ed25519",
+      "publicKeyHex": "f6c646416337ebc712002b4d5e9cfe7a51f24c1a74a13ab0d01c5f5a3a0030fb",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9sZGQWM368cSACtNXpz+elHyTBp0oTqw0BxfWjoAMPs=\n-----END PUBLIC KEY-----",
+      "validFrom": "2026-06-10T00:00:00Z",
+      "validUntil": null
     }
   ]
 }
