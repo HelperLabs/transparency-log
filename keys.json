@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "keys": [
+    {
+      "owner": "aaron",
+      "algorithm": "ed25519",
+      "publicKeyHex": "26bfa1c761ab91740b0888889c41746ccce4738868d4bfb5e23fb51a5105ce33",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAJr+hx2GrkXQLCIiInEF0bMzkc4ho1L+14j+1GlEFzjM=\n-----END PUBLIC KEY-----",
+      "validFrom": "2026-06-10T00:00:00Z",
+      "validUntil": null
+    }
+  ]
+}

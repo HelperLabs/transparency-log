@@ -1,0 +1,22 @@
+name: Verify snapshot signatures
+on:
+  push:
+    paths:
+      - "snapshots/**"
+      - "keys.json"
+      - ".github/**"
+  pull_request:
+    paths:
+      - "snapshots/**"
+      - "keys.json"
+      - ".github/**"
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install @noble/ed25519@2
+      - run: node .github/scripts/verify-signatures.mjs
