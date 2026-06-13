@@ -17,6 +17,8 @@ export function parseRoot(text) {
  *   - otherwise -> skip
  */
 export function decideAnchor({ root, latest, now, heartbeatMs }) {
+  // seqno is the 1-based Merkle tree size; the Worker returns seqno 0 / rootHash ""
+  // only for an empty log (the first real append is seqno 1).
   if (root.seqno === 0 || root.rootHash === "") {
     return { anchor: false, reason: "empty log" };
   }

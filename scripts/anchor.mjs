@@ -22,7 +22,7 @@ async function main() {
     if (!existsSync(path)) { completed.add(path); continue; } // record gone -> stop tracking
     const { bytes, changed } = await upgradeOts(readFileSync(path));
     if (changed) writeFileSync(path, bytes);
-    if (isComplete(readFileSync(path))) { completed.add(path); console.log(`upgraded complete: ${path}`); }
+    if (isComplete(bytes)) { completed.add(path); console.log(`upgraded complete: ${path}`); }
   }
   if (completed.size) pending = removeCompleted(pending, completed);
 
@@ -40,8 +40,9 @@ async function main() {
 
   // 4. Write record, stamp it, record pending + latest.
   const { record, path } = buildAnchorRecord({ root, now, source: ROOT_URL });
+  const recordBytes = Buffer.from(JSON.stringify(record, null, 2) + "\n");
   writeJson(path, record);
-  const ots = await stampBytes(readFileSync(path));
+  const ots = await stampBytes(recordBytes);
   writeFileSync(`${path}.ots`, ots);
   pending = addPending(pending, `${path}.ots`);
   writeJson(PENDING, pending);

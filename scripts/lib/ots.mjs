@@ -19,7 +19,8 @@ export async function upgradeOts(otsBytes) {
 /** True once a Bitcoin attestation is present (i.e. no longer pending). */
 export function isComplete(otsBytes) {
   const detached = DetachedTimestampFile.deserialize([...otsBytes]);
-  return /Bitcoin/i.test(O.info(detached)) && !/pending/i.test(O.info(detached));
+  const info = O.info(detached);
+  return /Bitcoin/i.test(info) && !/pending/i.test(info);
 }
 
 /** Verify a .ots against the original file bytes; returns the verify result object. */
