@@ -3,13 +3,17 @@ on:
   push:
     paths:
       - "snapshots/**"
+      - "anchors/**"
       - "keys.json"
       - ".github/**"
+      - "scripts/**"
   pull_request:
     paths:
       - "snapshots/**"
+      - "anchors/**"
       - "keys.json"
       - ".github/**"
+      - "scripts/**"
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -18,5 +22,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install @noble/ed25519@2
+      - run: npm ci
       - run: node .github/scripts/verify-signatures.mjs
+      - run: node scripts/verify-ots.mjs
