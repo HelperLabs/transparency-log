@@ -17,6 +17,12 @@ Once a week, each founder signs the current transparency-log root.
    ```bash
    git add snapshots/ && git commit -m "snapshot: $(date -u +%Y-%m-%d)" && git push
    ```
+   > If branch protection is enabled on the default branch, founders push a
+   > branch and open a PR instead of pushing directly. The hourly anchor bot
+   > (`anchor.yml`) likewise needs an allowance to push to the default branch —
+   > add GitHub Actions under Settings → Branches → "Allow specified actors to
+   > bypass required pull requests", or point the workflow at a dedicated app
+   > token with bypass rights.
 5. CI (`verify-snapshot.yml`) checks both signatures against `keys.json` and
    `ots verify`s any complete proofs.
 

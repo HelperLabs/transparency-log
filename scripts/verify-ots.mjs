@@ -24,6 +24,9 @@ for (const otsPath of [...walk("anchors"), ...walk("snapshots")]) {
   if (!isComplete(otsBytes)) { console.log(`skip (pending): ${otsPath}`); skipped++; continue; }
   try {
     const result = await verifyOts(otsBytes, readFileSync(filePath));
+    // O.verify returns {} when no attestation verified; we only reach here for
+    // proofs isComplete() already deemed Bitcoin-attested, so {} means the proof
+    // failed to verify against the source file → fail.
     if (result && Object.keys(result).length > 0) { console.log(`OK: ${otsPath}`); checked++; }
     else { console.error(`FAIL: ${otsPath}: no attestation in verify result`); failures++; }
   } catch (err) {

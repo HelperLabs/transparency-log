@@ -38,11 +38,20 @@ async function main() {
   console.log(`decision: anchor=${decision.anchor} (${decision.reason}) seqno=${root.seqno}`);
   if (!decision.anchor) { writeJson(PENDING, pending); return; }
 
-  // 4. Write record, stamp it, record pending + latest.
+  // 4. Stamp first, then write record + proof + state together. Stamping before
+  // any write means an OTS-calendar outage is a soft skip (no failed CI, no
+  // orphaned record) — the next run retries with a fresh anchor.
   const { record, path } = buildAnchorRecord({ root, now, source: ROOT_URL });
   const recordBytes = Buffer.from(JSON.stringify(record, null, 2) + "\n");
+  let ots;
+  try {
+    ots = await stampBytes(recordBytes);
+  } catch (err) {
+    console.log(`stamp failed (${err?.message ?? err}); skipping anchor this run`);
+    writeJson(PENDING, pending);
+    return;
+  }
   writeJson(path, record);
-  const ots = await stampBytes(recordBytes);
   writeFileSync(`${path}.ots`, ots);
   pending = addPending(pending, `${path}.ots`);
   writeJson(PENDING, pending);

@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { argv } from "node:process";
 import * as ed from "@noble/ed25519";
-import { signedPayload, checkMonotonic, buildSnapshotRecord, snapshotPath } from "./lib/snapshotCore.mjs";
+import { signedPayload, checkMonotonic, snapshotPath, canonicalToSign, applySignature } from "./lib/snapshotCore.mjs";
 import { stampBytes } from "./lib/ots.mjs";
 
 const ROOT_URL = process.env.ROOT_URL
@@ -47,21 +47,17 @@ async function main() {
   if (!gate.ok) throw new Error(`monotonicity sanity-gate FAILED: ${gate.reason} — refusing to sign`);
 
   const path = snapshotPath(timestamp);
+  // Co-sign if today's snapshot already exists (the other founder signed first).
+  // The signed payload must match what's on disk, so co-signers sign the
+  // EXISTING timestamp (canonicalToSign enforces this).
+  const existing = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
+  const canonical = canonicalToSign(existing, { seqno, rootHash, timestamp });
+
   const seed = loadSeed(keyPath);
-  const sig = await ed.signAsync(new TextEncoder().encode(signedPayload({ seqno, rootHash, timestamp })), seed);
+  const sig = await ed.signAsync(new TextEncoder().encode(signedPayload(canonical)), seed);
   const signatureB64 = Buffer.from(sig).toString("base64");
 
-  // Co-sign if today's snapshot already exists (the other founder signed first).
-  let record;
-  if (existsSync(path)) {
-    record = JSON.parse(readFileSync(path, "utf8"));
-    if (record.seqno !== seqno || record.rootHash !== rootHash) {
-      throw new Error("existing snapshot for today disagrees on seqno/rootHash — investigate before co-signing");
-    }
-    if (!record.signatures.some((s) => s.owner === owner)) record.signatures.push({ owner, signature: signatureB64 });
-  } else {
-    record = buildSnapshotRecord({ seqno, rootHash, timestamp, owner, signatureB64 });
-  }
+  const record = applySignature(existing, canonical, owner, signatureB64);
   writeJson(path, record);
 
   // Stamp the signed snapshot (idempotent: re-stamp on co-sign is fine, newest wins).
