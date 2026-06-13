@@ -1,0 +1,32 @@
+# Anchor the transparency-log root to Bitcoin via OpenTimestamps.
+name: Anchor log root (OpenTimestamps)
+on:
+  schedule:
+    - cron: "0 * * * *"   # hourly (GitHub may jitter/skip; anchoring self-heals)
+  workflow_dispatch: {}    # manual run for dry-runs / catch-up
+concurrency:
+  group: anchor
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  anchor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node scripts/anchor.mjs
+      - name: Commit anchors if changed
+        run: |
+          if [ -n "$(git status --porcelain anchors/)" ]; then
+            git config user.name "mypenny-anchor-bot"
+            git config user.email "anchor-bot@users.noreply.github.com"
+            git add anchors/
+            git commit -m "anchor: $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          else
+            echo "no anchor changes this run"
+          fi
