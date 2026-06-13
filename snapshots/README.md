@@ -22,5 +22,8 @@ The signed payload is the UTF-8 string:
 ```
 
 signed with the Ed25519 keys published in [`../keys.json`](../keys.json).
-CI verifies every snapshot on each push/PR. Snapshots are also anchored to
-Sigstore Rekor (see the witness-signing CLI, MyPenny issue #48).
+CI verifies every snapshot on each push/PR. Snapshots — and the hourly machine
+anchors under [`../anchors/`](../anchors/) — are additionally anchored to the
+**Bitcoin blockchain via OpenTimestamps**; the `.ots` proof beside each file is
+what makes that snapshot un-rewritable. Anyone can verify independently with the
+`ots` tool (`npm i -g javascript-opentimestamps` → `ots verify <file>.ots`).
