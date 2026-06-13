@@ -1,0 +1,13 @@
+{
+  "name": "mypenny-transparency-log",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2",
+    "javascript-opentimestamps": "0.4.5"
+  }
+}
