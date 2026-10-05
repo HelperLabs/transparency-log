@@ -1,5 +1,5 @@
 // scripts/lib/ots.mjs
-import O from "javascript-opentimestamps";
+import O from "opentimestamps";
 const { DetachedTimestampFile, Ops } = O;
 
 /** Stamp raw file bytes; returns the .ots proof bytes (Uint8Array). */
