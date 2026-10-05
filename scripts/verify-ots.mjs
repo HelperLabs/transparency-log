@@ -1,27 +1,28 @@
 // scripts/verify-ots.mjs
 // Verifies every COMPLETE .ots in anchors/ and snapshots/ against its source
-// file. Pending (not-yet-Bitcoin) proofs are skipped (not a failure).
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+// file. Pending (not-yet-Bitcoin) proofs are skipped while young and fail once
+// they have been pending longer than MAX_PENDING_MS (see lib/otsState.mjs).
+import { readFileSync, existsSync } from "node:fs";
 import { isComplete, verifyOts } from "./lib/ots.mjs";
+import { findOtsFiles } from "./lib/otsUpgrade.mjs";
+import { pendingVerdict } from "./lib/otsState.mjs";
 
-function walk(dir) {
-  if (!existsSync(dir)) return [];
-  const out = [];
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) out.push(...walk(p));
-    else if (p.endsWith(".ots")) out.push(p);
-  }
-  return out;
+function readRecord(path) {
+  try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }
 }
 
 let checked = 0, skipped = 0, failures = 0;
-for (const otsPath of [...walk("anchors"), ...walk("snapshots")]) {
+for (const otsPath of findOtsFiles(["anchors", "snapshots"])) {
   const filePath = otsPath.replace(/\.ots$/, "");
   if (!existsSync(filePath)) { console.error(`FAIL: ${otsPath}: source file ${filePath} missing`); failures++; continue; }
   const otsBytes = readFileSync(otsPath);
-  if (!isComplete(otsBytes)) { console.log(`skip (pending): ${otsPath}`); skipped++; continue; }
+  if (!isComplete(otsBytes)) {
+    // Pending is fine for a while, not forever: the anchor job upgrades proofs
+    // as calendars confirm them, so one that stays pending is a failure.
+    const verdict = pendingVerdict({ record: readRecord(filePath), now: Date.now() });
+    if (!verdict.ok) { console.error(`FAIL: ${otsPath}: ${verdict.reason}`); failures++; continue; }
+    console.log(`skip (pending ${(verdict.ageMs / 3600000).toFixed(1)}h): ${otsPath}`); skipped++; continue;
+  }
   try {
     const result = await verifyOts(otsBytes, readFileSync(filePath));
     // O.verify returns {} when no attestation verified; we only reach here for

@@ -19,12 +19,14 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: node scripts/anchor.mjs
-      - name: Commit anchors if changed
+      - name: Commit anchors and upgraded snapshot proofs if changed
         run: |
-          if [ -n "$(git status --porcelain anchors/)" ]; then
+          # The upgrade loop also rewrites snapshots/**/*.ots. Stage only those
+          # proofs from snapshots/, never a founder-signed .json.
+          if [ -n "$(git status --porcelain -- anchors/ ':(glob)snapshots/**/*.ots')" ]; then
             git config user.name "mypenny-anchor-bot"
             git config user.email "anchor-bot@users.noreply.github.com"
-            git add anchors/
+            git add -- anchors/ ':(glob)snapshots/**/*.ots'
             git commit -m "anchor: $(date -u +%Y-%m-%dT%H:%MZ)"
             git push
           else
