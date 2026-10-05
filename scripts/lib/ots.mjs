@@ -16,11 +16,16 @@ export async function upgradeOts(otsBytes) {
   return { bytes: detached.serializeToBytes(), changed };
 }
 
-/** True once a Bitcoin attestation is present (i.e. no longer pending). */
+/**
+ * True once the proof carries an attestation beyond a calendar's pending
+ * promise, using the library's own predicate (it counts Bitcoin, Litecoin and
+ * unrecognized attestations). Do not regex the info() text: Timestamp.merge
+ * only ever adds attestations, so an upgraded proof still lists the
+ * calendars' original pending attestations next to the Bitcoin one.
+ */
 export function isComplete(otsBytes) {
   const detached = DetachedTimestampFile.deserialize([...otsBytes]);
-  const info = O.info(detached);
-  return /Bitcoin/i.test(info) && !/pending/i.test(info);
+  return detached.timestamp.isTimestampComplete();
 }
 
 /** Verify a .ots against the original file bytes; returns the verify result object. */
