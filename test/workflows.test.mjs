@@ -75,3 +75,16 @@ test("checkouts that do not push drop the persisted token", () => {
     assert.equal(dropped, checkouts, w.name);
   }
 });
+
+test("anchor.yml: git add never gets a pathspec that can match nothing", () => {
+  // `git add` exits 128 when a pathspec matches no files. snapshots/ holds no
+  // .ots until a founder signs, so a glob pathspec there failed the first real
+  // run (2026-10-05) after the stamp had already been submitted.
+  const anchor = named("anchor.yml");
+  const adds = anchor.live.split("\n").filter((l) => /\bgit add\b/.test(l));
+  assert.ok(adds.length > 0, "anchor.yml should stage its changes");
+  for (const l of adds) {
+    const args = l.slice(l.indexOf("git add"));
+    assert.doesNotMatch(args, /:\(glob\)|\*/, `glob pathspec passed to git add: ${l.trim()}`);
+  }
+});
