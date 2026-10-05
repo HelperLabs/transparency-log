@@ -128,3 +128,18 @@ test("upgradeProofs: one broken proof does not stop the others", async () => {
     assert.deepEqual(readFileSync(good), COMPLETE);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test("upgradeProofs: dry run reports what it would upgrade and touches nothing", async () => {
+  const root = tree({
+    "snapshots/2026-06-07.json.ots": COMPLETE,
+    "snapshots/2026-06-14.json.ots": PENDING,
+  });
+  const upgrade = fakeUpgrade({ bytes: COMPLETE, changed: true });
+  try {
+    const r = await upgradeProofs({ pending: [], scanDirs: [join(root, "snapshots")], upgrade, isComplete, dryRun: true });
+    assert.equal(upgrade.calls.length, 0);
+    assert.deepEqual(r.wouldUpgrade, [join(root, "snapshots/2026-06-14.json.ots")]);
+    assert.deepEqual(r.completed, []);
+    assert.deepEqual(readFileSync(join(root, "snapshots/2026-06-14.json.ots")), PENDING);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

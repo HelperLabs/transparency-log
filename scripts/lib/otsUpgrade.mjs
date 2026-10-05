@@ -25,21 +25,27 @@ export function findOtsFiles(dirs) {
  * without contacting a calendar. One broken proof is reported and does not
  * stop the rest.
  *
- * Returns { pending, completed, failed }:
- *   pending   - the tracked list with completed or vanished entries removed
- *   completed - proofs that became complete during this call
- *   failed    - proofs that threw while reading or upgrading
+ * With `dryRun`, nothing is upgraded or written and no calendar is contacted;
+ * the proofs that WOULD be upgraded come back in `wouldUpgrade`.
+ *
+ * Returns { pending, completed, failed, wouldUpgrade }:
+ *   pending      - the tracked list with completed or vanished entries removed
+ *   completed    - proofs that became complete during this call
+ *   failed       - proofs that threw while reading or upgrading
+ *   wouldUpgrade - dry run only: incomplete proofs left untouched
  */
-export async function upgradeProofs({ pending, scanDirs, upgrade, isComplete, log = () => {} }) {
+export async function upgradeProofs({ pending, scanDirs, upgrade, isComplete, dryRun = false, log = () => {} }) {
   const candidates = [...new Set([...pending, ...findOtsFiles(scanDirs)])];
   const done = new Set();       // stop tracking: completed or vanished
   const completed = [];
   const failed = [];
+  const wouldUpgrade = [];
   for (const path of candidates) {
     if (!existsSync(path)) { done.add(path); continue; } // record gone -> stop tracking
     try {
       let bytes = readFileSync(path);
       if (isComplete(bytes)) { done.add(path); continue; }
+      if (dryRun) { wouldUpgrade.push(path); continue; }
       const result = await upgrade(bytes);
       if (result.changed) writeFileSync(path, result.bytes);
       if (isComplete(result.bytes)) { done.add(path); completed.push(path); log(`upgraded complete: ${path}`); }
@@ -48,5 +54,5 @@ export async function upgradeProofs({ pending, scanDirs, upgrade, isComplete, lo
       log(`upgrade failed for ${path}: ${err?.message ?? err}`);
     }
   }
-  return { pending: removeCompleted(pending, done), completed, failed };
+  return { pending: removeCompleted(pending, done), completed, failed, wouldUpgrade };
 }

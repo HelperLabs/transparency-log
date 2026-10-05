@@ -1,65 +1,26 @@
 // scripts/anchor.mjs
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { dirname } from "node:path";
-import { parseRoot, decideAnchor, buildAnchorRecord } from "./lib/anchorDecision.mjs";
-import { addPending } from "./lib/otsState.mjs";
+// Usage: node scripts/anchor.mjs [--dry-run]
+//   --dry-run  read the live root and print what would be anchored. Stamps
+//              nothing, contacts no OTS calendar, writes no file.
+import { argv } from "node:process";
+import { runAnchor } from "./lib/anchorRun.mjs";
 import { stampBytes, upgradeOts, isComplete } from "./lib/ots.mjs";
-import { upgradeProofs } from "./lib/otsUpgrade.mjs";
+
+// A real run publishes to public calendars, so an unrecognized flag (a typo of
+// --dry-run, say) must stop the run, not silently fall through to one.
+const args = argv.slice(2);
+if (args.some((a) => a !== "--dry-run")) {
+  console.error("usage: node scripts/anchor.mjs [--dry-run]");
+  process.exit(2);
+}
 
 const ROOT_URL = process.env.ROOT_URL
   ?? "https://mypenny-transparency-log.mypenny.workers.dev/api/log/root";
-const HEARTBEAT_MS = 24 * 60 * 60 * 1000;
-const LATEST = "anchors/latest.json";
-const PENDING = "anchors/pending.json";
-// Signed snapshots are stamped by sign-snapshot.mjs, which registers nothing,
-// so the upgrade loop finds their proofs by scanning instead.
-const SCAN_DIRS = ["snapshots"];
 
-const readJson = (p, fallback) => (existsSync(p) ? JSON.parse(readFileSync(p, "utf8")) : fallback);
-const writeJson = (p, v) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, JSON.stringify(v, null, 2) + "\n"); };
-
-async function main() {
-  // 1. Upgrade incomplete proofs: the tracked anchors plus every snapshot proof.
-  const upgraded = await upgradeProofs({
-    pending: readJson(PENDING, []),
-    scanDirs: SCAN_DIRS,
-    upgrade: upgradeOts,
-    isComplete,
-    log: console.log,
-  });
-  let pending = upgraded.pending;
-
-  // 2. Fetch current root.
-  const res = await fetch(ROOT_URL);
-  if (!res.ok) { console.log(`root fetch ${res.status}; skipping anchor this run`); writeJson(PENDING, pending); return; }
-  const root = parseRoot(await res.text());
-
-  // 3. Decide.
-  const latest = readJson(LATEST, null);
-  const now = Date.now();
-  const decision = decideAnchor({ root, latest, now, heartbeatMs: HEARTBEAT_MS });
-  console.log(`decision: anchor=${decision.anchor} (${decision.reason}) seqno=${root.seqno}`);
-  if (!decision.anchor) { writeJson(PENDING, pending); return; }
-
-  // 4. Stamp first, then write record + proof + state together. Stamping before
-  // any write means an OTS-calendar outage is a soft skip (no failed CI, no
-  // orphaned record) — the next run retries with a fresh anchor.
-  const { record, path } = buildAnchorRecord({ root, now, source: ROOT_URL });
-  const recordBytes = Buffer.from(JSON.stringify(record, null, 2) + "\n");
-  let ots;
-  try {
-    ots = await stampBytes(recordBytes);
-  } catch (err) {
-    console.log(`stamp failed (${err?.message ?? err}); skipping anchor this run`);
-    writeJson(PENDING, pending);
-    return;
-  }
-  writeJson(path, record);
-  writeFileSync(`${path}.ots`, ots);
-  pending = addPending(pending, `${path}.ots`);
-  writeJson(PENDING, pending);
-  writeJson(LATEST, { seqno: root.seqno, rootHash: root.rootHash, capturedAt: record.capturedAt, file: path });
-  console.log(`anchored ${path}`);
-}
-
-main().catch((err) => { console.error(`anchor failed: ${err?.message ?? err}`); process.exit(1); });
+runAnchor({
+  rootUrl: ROOT_URL,
+  upgrade: upgradeOts,
+  stamp: stampBytes,
+  isComplete,
+  dryRun: args.includes("--dry-run"),
+}).catch((err) => { console.error(`anchor failed: ${err?.message ?? err}`); process.exit(1); });

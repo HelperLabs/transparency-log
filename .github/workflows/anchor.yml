@@ -1,9 +1,20 @@
 # Anchor the transparency-log root to Bitcoin via OpenTimestamps.
 name: Anchor log root (OpenTimestamps)
 on:
-  schedule:
-    - cron: "0 * * * *"   # hourly (GitHub may jitter/skip; anchoring self-heals)
-  workflow_dispatch: {}    # manual run for dry-runs / catch-up
+  # The hourly schedule is OFF on purpose. A real run publishes to public
+  # OpenTimestamps calendars and commits to this repo, and this workflow has not
+  # run yet. Turn the schedule on in a separate one-line follow-up, after one
+  # manual run (workflow_dispatch with dry_run unchecked) whose commit has been
+  # reviewed. Sequence: RUNBOOK.md, "Enabling the hourly anchor".
+  #
+  # schedule:
+  #   - cron: "0 * * * *"   # hourly (GitHub may jitter/skip; anchoring self-heals)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: read the live root and print what would be anchored. No stamp, no commit."
+        type: boolean
+        default: true
 concurrency:
   group: anchor
   cancel-in-progress: false
@@ -18,8 +29,17 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: node scripts/anchor.mjs
+      - name: Anchor
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}   # empty on a schedule trigger, so scheduled runs are real
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            node scripts/anchor.mjs --dry-run
+          else
+            node scripts/anchor.mjs
+          fi
       - name: Commit anchors and upgraded snapshot proofs if changed
+        if: ${{ !inputs.dry_run }}
         run: |
           # The upgrade loop also rewrites snapshots/**/*.ots. Stage only those
           # proofs from snapshots/, never a founder-signed .json.
