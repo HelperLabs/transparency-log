@@ -61,9 +61,10 @@ heartbeat), and upgrades pending proofs, both the hourly anchors under
 `anchors/` and every signed snapshot under `snapshots/`. It commits the new
 anchors and the upgraded `.ots` files. It never touches a signed `.json`.
 
-**The hourly schedule is off.** The `schedule:` trigger in `anchor.yml` is
-commented out. Until it is enabled, run the job by hand from the Actions tab
-(workflow `Anchor log root`, "Run workflow"):
+**It runs every hour, on the hour** (the `schedule:` trigger in `anchor.yml`).
+GitHub may delay or skip a scheduled run; the next one catches up. It can also
+be run by hand from the Actions tab (workflow `Anchor log root`, "Run
+workflow"):
 
 - **Dry run** (the default): reads the live root and prints what would be
   anchored, which proofs would be upgraded, and which files would be written. It
@@ -72,19 +73,18 @@ commented out. Until it is enabled, run the job by hand from the Actions tab
 - **Real run**: untick `dry_run`. This publishes to the public calendars and
   pushes a commit.
 
-To turn the schedule on:
+The schedule went on 2026-10-05, after this sequence: a dry run; one real run
+whose commit was reviewed (the anchor at 03:08 UTC, log size 7,393,736); a wait
+for its Bitcoin confirmation (block 969,949); a second real run that upgraded
+that proof; and `node scripts/verify-ots.mjs` passing on it.
 
-1. Dispatch a dry run and read the log.
-2. Dispatch one real run and review the commit it pushes: a record under
-   `anchors/`, its `.ots`, `anchors/latest.json` and `anchors/pending.json`.
-3. Wait for the Bitcoin confirmation (hours, not minutes), dispatch another real
-   run, and check that the proof was upgraded (`npx ots-cli.js info anchors/<year>/<month>/<file>.json.ots` shows a
-   Bitcoin block attestation) and that `node scripts/verify-ots.mjs` passes.
-4. Uncomment the `schedule:` block in `anchor.yml` in a one-line PR.
+If anchors stop appearing, check the Actions tab. GitHub disables a scheduled
+workflow after 60 days without repository activity, and shows a button to
+turn it back on.
 
-While the schedule is off, nothing upgrades the founders' snapshot proofs
-automatically. If one reaches 7 days pending, CI fails it. Either dispatch a
-real anchor run, or upgrade just that proof by hand:
+Each run also upgrades the founders' snapshot proofs. If runs stop and one
+reaches 7 days pending, CI fails it. Either dispatch a real anchor run, or
+upgrade just that proof by hand:
 
 ```bash
 npx ots-cli.js upgrade snapshots/<date>.json.ots

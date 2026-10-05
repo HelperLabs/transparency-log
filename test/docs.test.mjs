@@ -22,9 +22,10 @@ test("docs no longer tell people to run a bare `ots` command or install the old 
   }
 });
 
-test("docs mention this repo's own verifier, the dry run and the commented-out schedule", () => {
+test("docs mention this repo's own verifier, the dry run and the hourly schedule", () => {
   assert.match(docs["snapshots/README.md"], /node scripts\/verify-ots\.mjs/);
   assert.match(docs["RUNBOOK.md"], /node scripts\/verify-ots\.mjs/);
   assert.match(docs["RUNBOOK.md"], /node scripts\/anchor\.mjs --dry-run/);
-  assert.match(docs["RUNBOOK.md"], /schedule is off/i);
+  assert.match(docs["RUNBOOK.md"], /runs every hour/i);
+  assert.doesNotMatch(docs["RUNBOOK.md"], /schedule is off/i);
 });

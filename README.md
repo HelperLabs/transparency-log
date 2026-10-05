@@ -22,7 +22,7 @@ The log runs on Cloudflare, a different cloud from the AWS account that holds
 the encryption keys, and Helper Labs operates its integrity checks. This repo
 adds a record that does not depend on either:
 
-- **Timestamps.** A GitHub Actions job here reads the log's current root,
+- **Timestamps.** Every hour, a GitHub Actions job here reads the log's current root,
   timestamps it through [OpenTimestamps](https://opentimestamps.org), which
   commits it to the Bitcoin blockchain, and commits the record and its proof
   under `anchors/`. A proof shows what the log's root was at that time; nobody,
