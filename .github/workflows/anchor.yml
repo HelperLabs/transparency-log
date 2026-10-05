@@ -19,16 +19,22 @@ concurrency:
   group: anchor
   cancel-in-progress: false
 permissions:
-  contents: write
+  contents: read
 jobs:
   anchor:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write   # the commit step pushes anchors and upgraded proofs
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Credentials stay persisted here (no persist-credentials: false) because
+      # this job pushes. Dependency code runs in the same job with that token in
+      # reach; splitting the push into its own job would close that gap.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - name: Anchor
         env:
           DRY_RUN: ${{ inputs.dry_run }}   # empty on a schedule trigger, so scheduled runs are real

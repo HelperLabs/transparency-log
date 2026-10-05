@@ -36,3 +36,42 @@ test("anchor.yml: workflow_dispatch takes a dry_run input that defaults to true"
   assert.match(live, /dry_run:\s*\n(\s+.*\n)*?\s+type: boolean\n\s+default: true/);
   assert.match(live, /--dry-run/);
 });
+
+test("every workflow declares least-privilege permissions at the top level", () => {
+  for (const w of workflows) assert.match(w.live, /^permissions:\s*\n\s+contents: (read|write)/m, w.name);
+  assert.match(named("verify-snapshot.yml").live, /^permissions:\s*\n\s+contents: read/m);
+  assert.match(named("test.yml").live, /^permissions:\s*\n\s+contents: read/m);
+});
+
+test("every job has a timeout", () => {
+  for (const w of workflows) {
+    const jobs = (w.live.match(/^ {4}runs-on:/gm) ?? []).length;
+    const timeouts = (w.live.match(/^ {4}timeout-minutes: \d+/gm) ?? []).length;
+    assert.ok(jobs > 0, w.name);
+    assert.equal(timeouts, jobs, `${w.name}: ${jobs} job(s), ${timeouts} timeout(s)`);
+  }
+});
+
+test("third-party actions are pinned to a full commit SHA with the version in a comment", () => {
+  for (const w of workflows) {
+    const uses = w.text.split("\n").filter((l) => /^\s*-?\s*uses:/.test(l));
+    assert.ok(uses.length > 0, w.name);
+    for (const l of uses) assert.match(l, /uses:\s*[\w.-]+\/[\w.-]+@[0-9a-f]{40}\s+# v\d+\.\d+\.\d+\s*$/, `${w.name}: ${l.trim()}`);
+  }
+});
+
+test("installs skip dependency lifecycle scripts", () => {
+  for (const w of workflows) {
+    for (const l of w.live.split("\n").filter((x) => /npm (ci|install)/.test(x))) {
+      assert.match(l, /--ignore-scripts/, `${w.name}: ${l.trim()}`);
+    }
+  }
+});
+
+test("checkouts that do not push drop the persisted token", () => {
+  for (const w of workflows.filter((x) => x.name !== "anchor.yml")) {
+    const checkouts = (w.live.match(/uses: actions\/checkout@/g) ?? []).length;
+    const dropped = (w.live.match(/persist-credentials: false/g) ?? []).length;
+    assert.equal(dropped, checkouts, w.name);
+  }
+});
