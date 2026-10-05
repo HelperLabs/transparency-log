@@ -1,23 +1,14 @@
-name: Verify snapshot signatures
+# Unit tests for the anchoring and signing scripts. Offline: nothing here
+# contacts the log worker, an OpenTimestamps calendar, or a block explorer.
+name: Tests
 on:
-  push:
-    paths:
-      - "snapshots/**"
-      - "anchors/**"
-      - "keys.json"
-      - ".github/**"
-      - "scripts/**"
   pull_request:
-    paths:
-      - "snapshots/**"
-      - "anchors/**"
-      - "keys.json"
-      - ".github/**"
-      - "scripts/**"
+  push:
+    branches: [main]
 permissions:
   contents: read
 jobs:
-  verify:
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -28,5 +19,4 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
-      - run: node .github/scripts/verify-signatures.mjs
-      - run: node scripts/verify-ots.mjs
+      - run: npm test
