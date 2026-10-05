@@ -57,10 +57,20 @@ test("canonicalToSign: co-sign signs the EXISTING timestamp, not the live one", 
     { seqno: 5, rootHash: "aa", timestamp: "2026-06-14T00:00:00Z" });
 });
 
-test("canonicalToSign: throws when live root disagrees with the existing snapshot", () => {
+test("canonicalToSign: co-sign takes seqno, rootHash and timestamp from the file even when the live log has grown", () => {
+  const existing = { seqno: 5, rootHash: "aa", timestamp: "2026-06-14T00:00:00Z", signatures: [{ owner: "aaron", signature: "S1" }] };
+  // The log appends continuously. Hours later the live root is ahead; the
+  // second signer still attests to the statement the first signer made.
+  assert.deepEqual(
+    canonicalToSign(existing, { seqno: 9, rootHash: "bb", timestamp: "2026-06-14T09:30:00Z" }),
+    { seqno: 5, rootHash: "aa", timestamp: "2026-06-14T00:00:00Z" });
+});
+
+test("canonicalToSign: throws only when the live root is BEHIND the recorded seqno", () => {
   const existing = { seqno: 5, rootHash: "aa", timestamp: "t", signatures: [] };
-  assert.throws(() => canonicalToSign(existing, { seqno: 6, rootHash: "aa", timestamp: "t2" }), /disagree/);
-  assert.throws(() => canonicalToSign(existing, { seqno: 5, rootHash: "bb", timestamp: "t2" }), /disagree/);
+  assert.throws(() => canonicalToSign(existing, { seqno: 4, rootHash: "aa", timestamp: "t2" }), /behind/);
+  assert.doesNotThrow(() => canonicalToSign(existing, { seqno: 5, rootHash: "aa", timestamp: "t2" }));
+  assert.doesNotThrow(() => canonicalToSign(existing, { seqno: 6, rootHash: "bb", timestamp: "t2" }));
 });
 
 test("applySignature: new record has exactly one signature", () => {

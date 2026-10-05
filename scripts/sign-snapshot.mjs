@@ -1,8 +1,8 @@
 // scripts/sign-snapshot.mjs
-import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { argv } from "node:process";
 import * as ed from "@noble/ed25519";
-import { signedPayload, checkMonotonic, snapshotPath, canonicalToSign, applySignature } from "./lib/snapshotCore.mjs";
+import { signSnapshot } from "./lib/signSnapshot.mjs";
 import { stampBytes } from "./lib/ots.mjs";
 
 const ROOT_URL = process.env.ROOT_URL
@@ -25,12 +25,6 @@ function loadSeed(keyPath) {
   throw new Error("unrecognized key format (expect PKCS#8 PEM or 64-hex seed)");
 }
 
-function latestSnapshot() {
-  if (!existsSync("snapshots")) return null;
-  const files = readdirSync("snapshots").filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
-  return files.length ? JSON.parse(readFileSync(`snapshots/${files.at(-1)}`, "utf8")) : null;
-}
-
 async function main() {
   const owner = arg("owner");
   const keyPath = arg("key");
@@ -38,35 +32,15 @@ async function main() {
 
   const res = await fetch(ROOT_URL);
   if (!res.ok) throw new Error(`root fetch ${res.status}`);
-  const { seqno, rootHash } = await res.json();
-  if (!rootHash) throw new Error("log is empty; nothing to sign");
-  const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-
-  const prev = latestSnapshot();
-  const gate = checkMonotonic(prev, { seqno, timestamp });
-  if (!gate.ok) throw new Error(`monotonicity sanity-gate FAILED: ${gate.reason} — refusing to sign`);
-
-  const path = snapshotPath(timestamp);
-  // Co-sign if today's snapshot already exists (the other founder signed first).
-  // The signed payload must match what's on disk, so co-signers sign the
-  // EXISTING timestamp (canonicalToSign enforces this).
-  const existing = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
-  const canonical = canonicalToSign(existing, { seqno, rootHash, timestamp });
+  const live = await res.json();
 
   const seed = loadSeed(keyPath);
-  const sig = await ed.signAsync(new TextEncoder().encode(signedPayload(canonical)), seed);
-  const signatureB64 = Buffer.from(sig).toString("base64");
+  const sign = async (payload) =>
+    Buffer.from(await ed.signAsync(new TextEncoder().encode(payload), seed)).toString("base64");
 
-  const record = applySignature(existing, canonical, owner, signatureB64);
-  writeJson(path, record);
-
-  // Stamp the signed snapshot (idempotent: re-stamp on co-sign is fine, newest wins).
-  const ots = await stampBytes(readFileSync(path));
-  writeFileSync(`${path}.ots`, ots);
-  console.log(`signed + stamped ${path} as ${owner} (seqno=${seqno})`);
+  const { path, record } = await signSnapshot({ live, now: Date.now(), owner, sign, stamp: stampBytes });
+  console.log(`signed + stamped ${path} as ${owner} (seqno=${record.seqno})`);
   console.log("Next: git add snapshots/ && git commit && git push (or open a PR).");
 }
-
-function writeJson(p, v) { writeFileSync(p, JSON.stringify(v, null, 2) + "\n"); }
 
 main().catch((err) => { console.error(err?.message ?? String(err)); process.exit(1); });

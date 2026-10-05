@@ -26,16 +26,19 @@ export function buildSnapshotRecord({ seqno, rootHash, timestamp, owner, signatu
 
 /**
  * Resolve the canonical {seqno, rootHash, timestamp} that must be SIGNED.
- * For a co-sign (an `existing` snapshot already on disk for the same day), the
- * signed payload must match what's on disk — including the FIRST signer's
- * timestamp — because verification rebuilds the payload from the file. So
- * co-signers sign the existing timestamp, NOT their own wall-clock; otherwise
- * their signature fails verification. New snapshots sign the live values.
+ *
+ * A co-signer attests to the statement already in the file, so for an
+ * `existing` snapshot all three fields come from that file and nothing is
+ * compared against the live root. The log appends continuously, so two founders
+ * signing hours apart will see different live roots, and verification rebuilds
+ * the payload from the file anyway. The one thing that is a real red flag is a
+ * live root BEHIND the recorded seqno (the log shrank), so that alone throws.
+ * New snapshots sign the live values.
  */
 export function canonicalToSign(existing, live) {
   if (!existing) return { seqno: live.seqno, rootHash: live.rootHash, timestamp: live.timestamp };
-  if (existing.seqno !== live.seqno || existing.rootHash !== live.rootHash) {
-    throw new Error("existing snapshot for today disagrees on seqno/rootHash — investigate before co-signing");
+  if (live.seqno < existing.seqno) {
+    throw new Error(`live log is behind the recorded snapshot (seqno ${live.seqno} < ${existing.seqno}) — investigate before co-signing`);
   }
   return { seqno: existing.seqno, rootHash: existing.rootHash, timestamp: existing.timestamp };
 }
@@ -50,6 +53,6 @@ export function applySignature(existing, canonical, owner, signatureB64) {
   return { ...existing, signatures: [...existing.signatures, { owner, signature: signatureB64 }] };
 }
 
-export function snapshotPath(timestamp) {
-  return `snapshots/${new Date(timestamp).toISOString().slice(0, 10)}.json`;
+export function snapshotPath(timestamp, dir = "snapshots") {
+  return `${dir}/${new Date(timestamp).toISOString().slice(0, 10)}.json`;
 }
