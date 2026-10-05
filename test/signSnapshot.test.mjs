@@ -3,13 +3,16 @@
 // keys, a fake stamper (nothing touches a calendar), and a live root passed in.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as ed from "@noble/ed25519";
 import { signSnapshot } from "../scripts/lib/signSnapshot.mjs";
 import { signedPayload } from "../scripts/lib/snapshotCore.mjs";
 
+const VERIFY = fileURLToPath(new URL("../.github/scripts/verify-signatures.mjs", import.meta.url));
 const H1 = "a".repeat(64);
 const H2 = "b".repeat(64);
 
@@ -91,4 +94,109 @@ test("co-signing refuses when the live log is behind what the file records", asy
     assert.equal(readFileSync(first.path, "utf8"), before);
     assert.equal(h.stamps.length, 1);
   } finally { h.done(); }
+});
+
+test("signer refuses worker output it could not have verified, and signs nothing", async () => {
+  const h = harness();
+  try {
+    const a = await founder();
+    let signed = 0;
+    const sign = async (p) => { signed++; return h.signer(a.seed)(p); };
+    const bad = [
+      { seqno: 1, rootHash: "a\nb" },
+      { seqno: "1\na", rootHash: "b" },
+      { seqno: -5, rootHash: H1 },
+      { seqno: 1.5, rootHash: H1 },
+      { seqno: 1, rootHash: H1.toUpperCase() },
+      { seqno: 1, rootHash: H1.slice(2) },
+    ];
+    for (const live of bad) {
+      await assert.rejects(
+        signSnapshot({ dir: h.dir, owner: "aaron", sign, stamp: h.stamp, live, now: Date.parse("2026-06-14T00:00:00Z") }),
+        /root/, JSON.stringify(live));
+    }
+    assert.equal(signed, 0);
+    assert.equal(h.stamps.length, 0);
+    assert.equal(existsSync(join(h.dir, "2026-06-14.json")), false);
+  } finally { h.done(); }
+});
+
+test("an empty log is still reported as empty, not as malformed", async () => {
+  const h = harness();
+  try {
+    const a = await founder();
+    await assert.rejects(
+      signSnapshot({ dir: h.dir, owner: "aaron", sign: h.signer(a.seed), stamp: h.stamp, live: { seqno: 0, rootHash: "" }, now: Date.now() }),
+      /empty/);
+  } finally { h.done(); }
+});
+
+test("a later snapshot with the same seqno but a different rootHash is refused (history rewrite)", async () => {
+  const h = harness();
+  try {
+    const a = await founder();
+    await signSnapshot({ dir: h.dir, owner: "aaron", sign: h.signer(a.seed), stamp: h.stamp,
+      live: { seqno: 100, rootHash: H1 }, now: Date.parse("2026-06-07T00:00:00Z") });
+    await assert.rejects(
+      signSnapshot({ dir: h.dir, owner: "aaron", sign: h.signer(a.seed), stamp: h.stamp,
+        live: { seqno: 100, rootHash: H2 }, now: Date.parse("2026-06-14T00:00:00Z") }),
+      /rootHash/);
+    assert.equal(existsSync(join(h.dir, "2026-06-14.json")), false);
+  } finally { h.done(); }
+});
+
+test("a co-signer is refused when the live root is the same size as the file but a different hash", async () => {
+  const h = harness();
+  try {
+    const a = await founder(), p = await founder();
+    await signSnapshot({ dir: h.dir, owner: "aaron", sign: h.signer(a.seed), stamp: h.stamp,
+      live: { seqno: 100, rootHash: H1 }, now: Date.parse("2026-06-14T00:00:00Z") });
+    await assert.rejects(
+      signSnapshot({ dir: h.dir, owner: "peter", sign: h.signer(p.seed), stamp: h.stamp,
+        live: { seqno: 100, rootHash: H2 }, now: Date.parse("2026-06-14T09:00:00Z") }),
+      /rootHash/);
+  } finally { h.done(); }
+});
+
+/** Run .github/scripts/verify-signatures.mjs on a scratch tree holding `snapshot` signed by `keys`. */
+async function runVerifier(snapshot, keys) {
+  const cwd = mkdtempSync(join(tmpdir(), "tlog-verifier-"));
+  try {
+    mkdirSync(join(cwd, "snapshots"));
+    writeFileSync(join(cwd, "keys.json"), JSON.stringify({
+      version: 1,
+      keys: await Promise.all(Object.entries(keys).map(async ([owner, f]) => ({
+        owner, algorithm: "ed25519", validFrom: "2020-01-01T00:00:00Z",
+        publicKeyHex: Buffer.from(f.pub).toString("hex"),
+      }))),
+    }));
+    writeFileSync(join(cwd, "snapshots", "2026-06-14.json"), JSON.stringify(snapshot));
+    const r = spawnSync(process.execPath, [VERIFY], { cwd, encoding: "utf8" });
+    return { code: r.status, out: r.stdout, err: r.stderr };
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+}
+
+test("lockstep: a snapshot made by the signer passes the CI verifier, both signatures", async () => {
+  const h = harness();
+  try {
+    const a = await founder(), p = await founder();
+    await signSnapshot({ dir: h.dir, owner: "aaron", sign: h.signer(a.seed), stamp: h.stamp,
+      live: { seqno: 100, rootHash: H1 }, now: Date.parse("2026-06-14T00:00:00Z") });
+    const { record } = await signSnapshot({ dir: h.dir, owner: "peter", sign: h.signer(p.seed), stamp: h.stamp,
+      live: { seqno: 120, rootHash: H2 }, now: Date.parse("2026-06-14T09:00:00Z") });
+    const r = await runVerifier(record, { aaron: a, peter: p });
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /aaron: signature OK/);
+    assert.match(r.out, /peter: signature OK/);
+  } finally { h.done(); }
+});
+
+test("lockstep: a signature over the old untagged payload no longer verifies", async () => {
+  const a = await founder();
+  const snap = { seqno: 100, rootHash: H1, timestamp: "2026-06-14T00:00:00Z" };
+  const untagged = `${snap.seqno}\n${snap.rootHash}\n${snap.timestamp}`;
+  const sig = Buffer.from(await ed.signAsync(new TextEncoder().encode(untagged), a.seed)).toString("base64");
+  const r = await runVerifier({ ...snap, signatures: [{ owner: "aaron", signature: sig }] }, { aaron: a });
+  assert.equal(r.code, 1);
+  assert.match(r.err, /signature INVALID/);
 });

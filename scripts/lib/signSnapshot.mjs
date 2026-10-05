@@ -2,7 +2,7 @@
 // The founder signing flow, with the key, the stamper and the live root passed
 // in so it can run offline in tests. scripts/sign-snapshot.mjs is the thin CLI.
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
-import { signedPayload, checkMonotonic, snapshotPath, canonicalToSign, applySignature } from "./snapshotCore.mjs";
+import { signedPayload, checkMonotonic, snapshotPath, canonicalToSign, applySignature, validateLiveRoot } from "./snapshotCore.mjs";
 
 function latestSnapshot(dir) {
   if (!existsSync(dir)) return null;
@@ -19,11 +19,11 @@ function latestSnapshot(dir) {
  * Returns { path, record }.
  */
 export async function signSnapshot({ dir = "snapshots", live, now, owner, sign, stamp }) {
-  const { seqno, rootHash } = live;
-  if (!rootHash) throw new Error("log is empty; nothing to sign");
+  if (!live?.rootHash) throw new Error("log is empty; nothing to sign");
+  const { seqno, rootHash } = validateLiveRoot(live);
   const timestamp = new Date(now).toISOString().replace(/\.\d{3}Z$/, "Z");
 
-  const gate = checkMonotonic(latestSnapshot(dir), { seqno, timestamp });
+  const gate = checkMonotonic(latestSnapshot(dir), { seqno, rootHash, timestamp });
   if (!gate.ok) throw new Error(`monotonicity sanity-gate FAILED: ${gate.reason} — refusing to sign`);
 
   // Co-sign if today's snapshot already exists (the other founder signed first).

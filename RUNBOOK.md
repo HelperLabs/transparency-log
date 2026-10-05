@@ -8,11 +8,15 @@ Once a week, each founder signs the current transparency-log root.
    ```bash
    node scripts/sign-snapshot.mjs --owner <aaron|peter> --key ~/.mypenny/keys/<you>.ed25519.pem
    ```
-   - It fetches the live root, runs the monotonicity sanity-gate, signs
-     `<seqno>\n<rootHash>\n<timestamp>`, writes `snapshots/<today>.json`, and
-     stamps it (`.ots`).
+   - It fetches the live root, checks its shape (integer `seqno`, 64-char
+     lowercase hex `rootHash`), runs the monotonicity sanity-gate, signs
+     `mypenny-tlog-snapshot-v1\n<seqno>\n<rootHash>\n<timestamp>`, writes
+     `snapshots/<today>.json`, and stamps it (`.ots`).
    - If the other founder already created today's snapshot, it co-signs the
-     same file.
+     same file. The co-signer signs the `seqno`, `rootHash` and `timestamp`
+     already in the file, even if the live log has grown since. It refuses if
+     the live log is behind the file, or has the same `seqno` with a different
+     `rootHash`.
 4. Commit + push (or open a PR):
    ```bash
    git add snapshots/ && git commit -m "snapshot: $(date -u +%Y-%m-%d)" && git push

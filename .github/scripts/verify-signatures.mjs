@@ -33,7 +33,9 @@ for (const f of files) {
   if (!Number.isInteger(snap.seqno) || snap.seqno < 0) fail(`${f}: bad seqno`);
   if (!HEX64.test(snap.rootHash ?? "")) fail(`${f}: rootHash is not 64-char hex`);
   if (Number.isNaN(Date.parse(snap.timestamp ?? ""))) fail(`${f}: bad timestamp`);
-  const payload = new TextEncoder().encode(`${snap.seqno}\n${snap.rootHash}\n${snap.timestamp}`);
+  // Same bytes as signedPayload() in scripts/lib/snapshotCore.mjs: the
+  // domain-separation tag, then seqno, rootHash and timestamp one per line.
+  const payload = new TextEncoder().encode(`mypenny-tlog-snapshot-v1\n${snap.seqno}\n${snap.rootHash}\n${snap.timestamp}`);
 
   const sigs = snap.signatures ?? [];
   if (sigs.length === 0) fail(`${f}: no signatures`);

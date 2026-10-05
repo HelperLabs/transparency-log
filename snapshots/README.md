@@ -15,13 +15,21 @@ named `YYYY-MM-DD.json` (the date of the snapshot) and has this shape:
 }
 ```
 
-The signed payload is the UTF-8 string:
+The signed payload is the UTF-8 string below. The first line is a fixed
+domain-separation tag, so a snapshot signature cannot double as a signature over
+anything else the same key signs:
 
 ```
-<seqno>\n<rootHash>\n<timestamp>
+mypenny-tlog-snapshot-v1\n<seqno>\n<rootHash>\n<timestamp>
 ```
 
-signed with the Ed25519 keys published in [`../keys.json`](../keys.json).
+`seqno` is a non-negative integer and `rootHash` is 64 lowercase hex characters,
+so none of the fields can contain a newline. The payload is signed with the
+Ed25519 keys published in [`../keys.json`](../keys.json).
+
+A co-signer signs the statement already in the file (same `seqno`, `rootHash` and
+`timestamp`), not the live root, so a snapshot can carry both founders'
+signatures even though the log keeps growing between their signing times.
 CI verifies every snapshot on each push/PR. Snapshots — and the hourly machine
 anchors under [`../anchors/`](../anchors/) — are additionally anchored to the
 **Bitcoin blockchain via OpenTimestamps**; the `.ots` proof beside each file is
