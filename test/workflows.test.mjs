@@ -23,11 +23,11 @@ test("there is a workflow that runs npm test on pull_request and on push", () =>
   assert.match(w.live, /^\s{2}push:/m);
 });
 
-test("anchor.yml: the hourly schedule is commented out", () => {
+// Turned on 2026-10-05, after the first real anchor was confirmed in Bitcoin
+// (RUNBOOK.md, "Anchor job").
+test("anchor.yml: runs every hour, on the hour", () => {
   const anchor = named("anchor.yml");
-  assert.doesNotMatch(anchor.live, /^\s*schedule:/m);
-  assert.doesNotMatch(anchor.live, /cron:/);
-  assert.match(anchor.text, /#\s*schedule:/, "the commented-out schedule should stay as a ready-to-enable block");
+  assert.match(anchor.live, /^\s{2}schedule:\n\s{4}- cron: "0 \* \* \* \*"/m);
 });
 
 test("anchor.yml: workflow_dispatch takes a dry_run input that defaults to true", () => {

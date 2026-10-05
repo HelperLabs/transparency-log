@@ -1,14 +1,12 @@
 # Anchor the transparency-log root to Bitcoin via OpenTimestamps.
 name: Anchor log root (OpenTimestamps)
 on:
-  # The hourly schedule is OFF on purpose. A real run publishes to public
-  # OpenTimestamps calendars and commits to this repo, and this workflow has not
-  # run yet. Turn the schedule on in a separate one-line follow-up, after one
-  # manual run (workflow_dispatch with dry_run unchecked) whose commit has been
-  # reviewed. Sequence: RUNBOOK.md, "Enabling the hourly anchor".
-  #
-  # schedule:
-  #   - cron: "0 * * * *"   # hourly (GitHub may jitter/skip; anchoring self-heals)
+  # Hourly since 2026-10-05, turned on after the first real anchor was
+  # confirmed in Bitcoin (RUNBOOK.md, "Anchor job"). GitHub may delay or skip a
+  # scheduled run; the next one stamps whatever the root is then and upgrades
+  # any pending proofs, so a missed hour costs nothing.
+  schedule:
+    - cron: "0 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
