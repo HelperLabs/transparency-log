@@ -98,8 +98,12 @@ request paths, or any memory content.
 The log is an append-only Merkle tree hosted on Cloudflare, on a different
 cloud from user data. Helper Labs operates the integrity checks, including a
 job that samples recent entries every ten minutes and recomputes daily
-fingerprints from the source records. No outside party monitors or anchors
-the log.
+fingerprints from the source records.
+
+Separately, a job in this repository timestamps the log's root through
+OpenTimestamps, which commits it to the Bitcoin blockchain, and keeps each
+record and proof under [`anchors/`](anchors/). A proof shows what the root was
+at that time. Nobody outside Helper Labs monitors the log.
 
 ## Legal compulsion and gag orders
 
@@ -130,4 +134,5 @@ of what we promised, and when, is itself auditable.
   and that it triggered an immediate email to the user; none of that runs
   today. Added the reason codes introduced since June. Corrected the entry
   fields: the log carries the exact time of an out-of-the-ordinary access, not
-  a 5-minute bucket, and no key-version field.
+  a 5-minute bucket, and no key-version field. Added the OpenTimestamps
+  anchoring of the log root, which started the same day.
