@@ -2,5 +2,5 @@
   "seqno": 7393820,
   "rootHash": "8610cfb570498111fcdd23b0837a1d51b9ebe540e7415bf41b5195064f871470",
   "capturedAt": "2026-10-06T04:07:01.849Z",
-  "file": "anchors/2026/10/2026-10-06T040701Z-7393820.json"
+  "source": "https://mypenny-transparency-log.mypenny.workers.dev/api/log/root"
 }
