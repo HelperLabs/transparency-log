@@ -7,6 +7,7 @@ import * as ed from "@noble/ed25519";
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
 const HEX64 = /^[0-9a-f]{64}$/;
+const SHARD_RE = /^(legacy|\d{4}-(0[1-9]|1[0-2]))$/;
 let failures = 0;
 const fail = (msg) => {
   console.error(`FAIL: ${msg}`);
@@ -30,12 +31,18 @@ console.log(`keys.json: ${keys.size} key(s): ${[...keys.keys()].join(", ")}`);
 const files = readdirSync("snapshots").filter((f) => f.endsWith(".json"));
 for (const f of files) {
   const snap = JSON.parse(readFileSync(`snapshots/${f}`, "utf8"));
+  if (snap.shard !== undefined && (typeof snap.shard !== "string" || !SHARD_RE.test(snap.shard))) {
+    fail(`${f}: bad shard`);
+  }
   if (!Number.isInteger(snap.seqno) || snap.seqno < 0) fail(`${f}: bad seqno`);
   if (!HEX64.test(snap.rootHash ?? "")) fail(`${f}: rootHash is not 64-char hex`);
   if (Number.isNaN(Date.parse(snap.timestamp ?? ""))) fail(`${f}: bad timestamp`);
-  // Same bytes as signedPayload() in scripts/lib/snapshotCore.mjs: the
-  // domain-separation tag, then seqno, rootHash and timestamp one per line.
-  const payload = new TextEncoder().encode(`mypenny-tlog-snapshot-v1\n${snap.seqno}\n${snap.rootHash}\n${snap.timestamp}`);
+  // Same bytes as signedPayload() in scripts/lib/snapshotCore.mjs:
+  // v2 for shard-aware snapshots, v1 for older pre-Phase-2 files without `shard`.
+  const payloadText = snap.shard !== undefined
+    ? `mypenny-tlog-snapshot-v2\n${snap.shard}\n${snap.seqno}\n${snap.rootHash}\n${snap.timestamp}`
+    : `mypenny-tlog-snapshot-v1\n${snap.seqno}\n${snap.rootHash}\n${snap.timestamp}`;
+  const payload = new TextEncoder().encode(payloadText);
 
   const sigs = snap.signatures ?? [];
   if (sigs.length === 0) fail(`${f}: no signatures`);

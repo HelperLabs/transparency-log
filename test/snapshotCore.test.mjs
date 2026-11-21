@@ -1,7 +1,17 @@
 // test/snapshotCore.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { signedPayload, checkMonotonic, buildSnapshotRecord, snapshotPath, canonicalToSign, applySignature, validateLiveRoot, PAYLOAD_PREFIX } from "../scripts/lib/snapshotCore.mjs";
+import {
+  signedPayload,
+  checkMonotonic,
+  buildSnapshotRecord,
+  snapshotPath,
+  canonicalToSign,
+  applySignature,
+  validateLiveRoot,
+  PAYLOAD_PREFIX,
+  PAYLOAD_PREFIX_V2,
+} from "../scripts/lib/snapshotCore.mjs";
 
 test("signedPayload is the domain-separation tag plus the exact 3-line UTF-8 string", () => {
   assert.equal(PAYLOAD_PREFIX, "mypenny-tlog-snapshot-v1\n");
@@ -128,4 +138,82 @@ test("validateLiveRoot: rejects anything verify-signatures.mjs would reject", ()
 test("validateLiveRoot: rejects the newline-injection pair that collides without a tag", () => {
   assert.throws(() => validateLiveRoot({ seqno: "1\na", rootHash: "b" }));
   assert.throws(() => validateLiveRoot({ seqno: 1, rootHash: "a\nb" }));
+});
+
+test("signedPayload v2 includes shard and v2 domain tag when shard is present", () => {
+  assert.equal(PAYLOAD_PREFIX_V2, "mypenny-tlog-snapshot-v2\n");
+  assert.equal(
+    signedPayload({ shard: "2026-12", seqno: 42, rootHash: GOOD, timestamp: "2026-12-06T00:00:00Z" }),
+    `mypenny-tlog-snapshot-v2\n2026-12\n42\n${GOOD}\n2026-12-06T00:00:00Z`,
+  );
+});
+
+test("validateLiveRoot: accepts checkpoint shape ({shard, size, rootHash}) and rejects bad shard", () => {
+  assert.deepEqual(
+    validateLiveRoot({ shard: "2026-12", size: 42, rootHash: GOOD }),
+    { shard: "2026-12", seqno: 42, rootHash: GOOD },
+  );
+  assert.throws(() => validateLiveRoot({ shard: "2026-13", size: 1, rootHash: GOOD }), /shard/);
+  assert.throws(() => validateLiveRoot({ shard: "legacy\n2026-12", size: 1, rootHash: GOOD }), /shard/);
+});
+
+function makeShardLink(shard, predShard, predSize, predRootHash, overrides = {}) {
+  const origin = `mypenny.ai/transparency-log/${predShard}`;
+  const body = `${origin}\n${predSize}\n${Buffer.from(predRootHash, "hex").toString("base64")}\n`;
+  return {
+    eventId: `shardlink:${shard}`,
+    type: "ShardLink",
+    payload: {
+      shard,
+      predecessor: {
+        format: "mypenny-checkpoint/v0",
+        origin,
+        shard: predShard,
+        size: predSize,
+        rootHash: predRootHash,
+        sealed: true,
+        sealedAt: Date.parse("2026-12-01T00:00:01Z"),
+        successor: shard,
+        body,
+        ...(overrides.predecessor ?? {}),
+      },
+      ...(overrides.payload ?? {}),
+    },
+    ...(overrides.leaf ?? {}),
+  };
+}
+
+test("checkMonotonic across a shard change: requires valid ShardLink proving predecessor reached prev size", () => {
+  const H1 = "a".repeat(64);
+  const H2 = "b".repeat(64);
+  const prev = { seqno: 7400000, rootHash: H1, timestamp: "2026-11-29T00:00:00Z" }; // pre-Phase-2 legacy snapshot
+  const next = { shard: "2026-12", seqno: 15, rootHash: H2, timestamp: "2026-12-06T00:00:00Z" };
+
+  // Valid ShardLink with predecessor.size > prev.seqno -> ok
+  const okLink = makeShardLink("2026-12", "legacy", 7400050, "c".repeat(64));
+  assert.deepEqual(checkMonotonic(prev, next, { shardLink: okLink }), { ok: true });
+
+  // Valid ShardLink with predecessor.size === prev.seqno and matching rootHash -> ok
+  const sameSizeOk = makeShardLink("2026-12", "legacy", 7400000, H1);
+  assert.deepEqual(checkMonotonic(prev, next, { shardLink: sameSizeOk }), { ok: true });
+
+  // Same size with DIFFERENT rootHash -> rejected (seal rewrite)
+  const sameSizeBad = makeShardLink("2026-12", "legacy", 7400000, H2);
+  assert.equal(checkMonotonic(prev, next, { shardLink: sameSizeBad }).ok, false);
+
+  // Missing ShardLink -> rejected
+  assert.equal(checkMonotonic(prev, next).ok, false);
+
+  // Wrong predecessor shard -> rejected
+  const wrongPred = makeShardLink("2026-12", "2026-11", 7400050, H1);
+  assert.equal(checkMonotonic(prev, next, { shardLink: wrongPred }).ok, false);
+
+  // Predecessor shrank below previous snapshot size -> rejected
+  const shrank = makeShardLink("2026-12", "legacy", 7399999, H1);
+  assert.equal(checkMonotonic(prev, next, { shardLink: shrank }).ok, false);
+
+  // Backward shard regression -> rejected even with a ShardLink
+  const decPrev = { shard: "2026-12", seqno: 15, rootHash: H2, timestamp: "2026-12-06T00:00:00Z" };
+  const backNext = { shard: "legacy", seqno: 7400051, rootHash: H1, timestamp: "2026-12-13T00:00:00Z" };
+  assert.equal(checkMonotonic(decPrev, backNext, { shardLink: okLink }).ok, false);
 });

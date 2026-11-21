@@ -8,12 +8,15 @@ Once a week, each founder signs the current transparency-log root.
    ```bash
    node scripts/sign-snapshot.mjs --owner <aaron|peter> --key ~/.mypenny/keys/<you>.ed25519.pem
    ```
-   - It fetches the live root, checks its shape (integer `seqno`, 64-char
-     lowercase hex `rootHash`), runs the monotonicity sanity-gate, signs
-     `mypenny-tlog-snapshot-v1\n<seqno>\n<rootHash>\n<timestamp>`, writes
-     `snapshots/<today>.json`, and stamps it (`.ots`). A fresh proof is
-     pending: it only becomes a Bitcoin attestation after the anchor job
-     upgrades it (see "Anchor job" below).
+   - It reads `/api/log/shards` to find the open shard, fetches its live
+     checkpoint (`/api/log/<shard>/checkpoint`), runs the monotonicity
+     sanity-gate (verifying `/api/log/<shard>/event/1` is a valid `ShardLink`
+     whenever the shard changes), signs
+     `mypenny-tlog-snapshot-v2\n<shard>\n<seqno>\n<rootHash>\n<timestamp>`,
+     writes `snapshots/<today>.json`, and stamps it (`.ots`). Pre-Phase-2
+     snapshots without `shard` keep verifying under the `v1` three-line format.
+     A fresh proof is pending: it only becomes a Bitcoin attestation after the
+     anchor job upgrades it (see "Anchor job" below).
    - If the other founder already created today's snapshot, it co-signs the
      same file. The co-signer signs the `seqno`, `rootHash` and `timestamp`
      already in the file, even if the live log has grown since. It refuses if
@@ -56,10 +59,14 @@ offline. To check every proof in the repo at once, run
 
 ## Anchor job (`anchor.yml`)
 
-The anchor job reads the live root, stamps it when it changed (or once a day as a
-heartbeat), and upgrades pending proofs, both the hourly anchors under
-`anchors/` and every signed snapshot under `snapshots/`. It commits the new
-anchors and the upgraded `.ots` files. It never touches a signed `.json`.
+The anchor job reads `/api/log/shards` (defaulting to `LOG_BASE`, falling back
+to `/api/log/root` on a pre-Phase-2 404). For each sealed shard without a record
+at `anchors/sealed/<shard>.json`, it fetches `/api/log/<shard>/checkpoint` and
+stamps it once with its full C2SP checkpoint `body`. For the open shard, it
+stamps the live checkpoint when the root changed (or once a day as a heartbeat),
+keyed per shard in `anchors/latest.json` (`{ "byShard": { ... } }`), and
+upgrades pending proofs under `anchors/` and `snapshots/`. It never touches a
+signed `.json`. For off-repo rehearsals, pass `LOG_BASE=<url>` and `--out <dir>`.
 
 **It runs every hour, on the hour** (the `schedule:` trigger in `anchor.yml`).
 GitHub may delay or skip a scheduled run; the next one catches up. It can also

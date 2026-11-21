@@ -200,3 +200,62 @@ test("lockstep: a signature over the old untagged payload no longer verifies", a
   assert.equal(r.code, 1);
   assert.match(r.err, /signature INVALID/);
 });
+
+test("lockstep: shard-aware snapshot (v2) signs across a legacy -> 2026-12 rollover and passes CI verifier", async () => {
+  const h = harness();
+  try {
+    const a = await founder(), p = await founder();
+    // Week 1: old v1 legacy snapshot (no shard field)
+    const oldSnap = await signSnapshot({
+      dir: h.dir, owner: "aaron", sign: h.signer(a.seed), stamp: h.stamp,
+      live: { seqno: 7400000, rootHash: H1 }, now: Date.parse("2026-11-29T00:00:00Z"),
+    });
+    // Old v1 file still verifies!
+    const rOld = await runVerifier(oldSnap.record, { aaron: a });
+    assert.equal(rOld.code, 0, rOld.err);
+
+    // Week 2: 2026-12 shard open, ShardLink chains legacy at 7400050
+    const predRoot = "c".repeat(64);
+    const origin = "mypenny.ai/transparency-log/legacy";
+    const shardLink = {
+      eventId: "shardlink:2026-12",
+      type: "ShardLink",
+      payload: {
+        shard: "2026-12",
+        predecessor: {
+          format: "mypenny-checkpoint/v0",
+          origin,
+          shard: "legacy",
+          size: 7400050,
+          rootHash: predRoot,
+          sealed: true,
+          sealedAt: Date.parse("2026-12-01T00:00:02Z"),
+          successor: "2026-12",
+          body: `${origin}\n7400050\n${Buffer.from(predRoot, "hex").toString("base64")}\n`,
+        },
+      },
+    };
+    await signSnapshot({
+      dir: h.dir, owner: "aaron", sign: h.signer(a.seed), stamp: h.stamp,
+      live: { shard: "2026-12", size: 15, rootHash: H2 }, shardLink,
+      now: Date.parse("2026-12-06T00:00:00Z"),
+    });
+    const { record } = await signSnapshot({
+      dir: h.dir, owner: "peter", sign: h.signer(p.seed), stamp: h.stamp,
+      live: { shard: "2026-12", size: 22, rootHash: "d".repeat(64) }, shardLink,
+      now: Date.parse("2026-12-06T09:00:00Z"),
+    });
+    assert.equal(record.shard, "2026-12");
+    assert.equal(record.seqno, 15);
+    const rNew = await runVerifier(record, { aaron: a, peter: p });
+    assert.equal(rNew.code, 0, rNew.err);
+    assert.match(rNew.out, /aaron: signature OK/);
+    assert.match(rNew.out, /peter: signature OK/);
+
+    // Tampering with shard must fail CI verification
+    const tampered = { ...record, shard: "2027-01" };
+    const rBad = await runVerifier(tampered, { aaron: a, peter: p });
+    assert.equal(rBad.code, 1);
+    assert.match(rBad.err, /signature INVALID/);
+  } finally { h.done(); }
+});
