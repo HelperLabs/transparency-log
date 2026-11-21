@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import O from "opentimestamps";
-import { isComplete } from "../scripts/lib/ots.mjs";
+import { isComplete, verifyOts } from "../scripts/lib/ots.mjs";
 
 const require = createRequire(import.meta.url);
 const EXAMPLES = join(dirname(require.resolve("opentimestamps/package.json")), "examples");
@@ -42,4 +42,56 @@ test("isComplete: a pending proof becomes complete once a Bitcoin attestation is
   const bytes = detached.serializeToBytes();
   assert.match(O.info(O.DetachedTimestampFile.deserialize([...bytes])), /pending/i); // pending is still there
   assert.equal(isComplete(bytes), true);
+});
+
+test("verifyOts: verifies digest + Bitcoin attestation, caches block headers, and fails over on 429", async () => {
+  const otsBytes = example("hello-world.txt.ots");
+  const fileBytes = example("hello-world.txt");
+  const detached = O.DetachedTimestampFile.deserialize([...otsBytes]);
+  let expectedHeight;
+  let expectedMerkle;
+  detached.timestamp.allAttestations().forEach((att, msg) => {
+    if (att instanceof O.Notary.BitcoinBlockHeaderAttestation) {
+      expectedHeight = att.height;
+      expectedMerkle = Buffer.from(msg.slice().reverse()).toString("hex");
+    }
+  });
+  assert.ok(expectedHeight && expectedMerkle);
+
+  const calls = [];
+  const fakeHash = "b".repeat(64);
+  const fetchFn = async (url) => {
+    calls.push(url);
+    // Primary returns 429; secondary answers with the block header.
+    if (url.startsWith("https://primary.test")) return { ok: false, status: 429, text: async () => "rate limited" };
+    if (url.endsWith(`/block-height/${expectedHeight}`)) return { ok: true, status: 200, text: async () => fakeHash };
+    if (url.endsWith(`/block/${fakeHash}`)) {
+      return { ok: true, status: 200, json: async () => ({ merkle_root: expectedMerkle, timestamp: 1432827678 }) };
+    }
+    return { ok: false, status: 404, text: async () => "not found" };
+  };
+
+  const blockCache = new Map();
+  const opts = { esploraUrls: ["https://primary.test", "https://backup.test"], fetchFn, blockCache };
+  const res1 = await verifyOts(otsBytes, fileBytes, opts);
+  assert.deepEqual(res1, { bitcoin: { timestamp: 1432827678, height: expectedHeight } });
+  const callsAfterFirst = calls.length;
+
+  // Second call for the same height hits the cache (zero new HTTP calls).
+  const res2 = await verifyOts(otsBytes, fileBytes, opts);
+  assert.deepEqual(res2, res1);
+  assert.equal(calls.length, callsAfterFirst);
+
+  // Wrong source bytes fail closed before any explorer call.
+  await assert.rejects(verifyOts(otsBytes, Buffer.from("tampered"), opts), /does not match/);
+
+  // Wrong merkle_root from explorer fails verification.
+  const badFetch = async (url) => {
+    if (url.endsWith(`/block-height/${expectedHeight}`)) return { ok: true, status: 200, text: async () => fakeHash };
+    return { ok: true, status: 200, json: async () => ({ merkle_root: "0".repeat(64), timestamp: 1432827678 }) };
+  };
+  await assert.rejects(
+    verifyOts(otsBytes, fileBytes, { esploraUrls: ["https://bad.test"], fetchFn: badFetch, blockCache: new Map() }),
+    /merkleroot/i,
+  );
 });

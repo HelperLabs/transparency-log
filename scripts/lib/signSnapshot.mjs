@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { signedPayload, checkMonotonic, snapshotPath, canonicalToSign, applySignature, validateLiveRoot } from "./snapshotCore.mjs";
 
-function latestSnapshot(dir) {
+export function latestSnapshot(dir) {
   if (!existsSync(dir)) return null;
   const files = readdirSync(dir).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
   return files.length ? JSON.parse(readFileSync(`${dir}/${files.at(-1)}`, "utf8")) : null;
@@ -12,24 +12,26 @@ function latestSnapshot(dir) {
 
 /**
  * Sign (or co-sign) today's snapshot and stamp it.
- *   live   - { seqno, rootHash } as returned by the log worker
- *   now    - ms since the epoch
- *   sign   - async (payloadString) => base64 Ed25519 signature
- *   stamp  - async (fileBytes) => .ots proof bytes
+ *   live      - { seqno, rootHash } or { shard, size, rootHash } from the worker
+ *   shardLink - event/1 of the new shard when the shard changed since the prior snapshot
+ *   now       - ms since the epoch
+ *   sign      - async (payloadString) => base64 Ed25519 signature
+ *   stamp     - async (fileBytes) => .ots proof bytes
  * Returns { path, record }.
  */
-export async function signSnapshot({ dir = "snapshots", live, now, owner, sign, stamp }) {
+export async function signSnapshot({ dir = "snapshots", live, shardLink, now, owner, sign, stamp }) {
   if (!live?.rootHash) throw new Error("log is empty; nothing to sign");
-  const { seqno, rootHash } = validateLiveRoot(live);
+  const { shard, seqno, rootHash } = validateLiveRoot(live);
   const timestamp = new Date(now).toISOString().replace(/\.\d{3}Z$/, "Z");
+  const next = shard !== undefined ? { shard, seqno, rootHash, timestamp } : { seqno, rootHash, timestamp };
 
-  const gate = checkMonotonic(latestSnapshot(dir), { seqno, rootHash, timestamp });
+  const gate = checkMonotonic(latestSnapshot(dir), next, { shardLink });
   if (!gate.ok) throw new Error(`monotonicity sanity-gate FAILED: ${gate.reason} — refusing to sign`);
 
   // Co-sign if today's snapshot already exists (the other founder signed first).
   const path = snapshotPath(timestamp, dir);
   const existing = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
-  const canonical = canonicalToSign(existing, { seqno, rootHash, timestamp });
+  const canonical = canonicalToSign(existing, next, { shardLink });
 
   const signatureB64 = await sign(signedPayload(canonical));
   const record = applySignature(existing, canonical, owner, signatureB64);

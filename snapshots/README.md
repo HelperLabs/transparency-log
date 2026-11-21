@@ -20,8 +20,11 @@ domain-separation tag, so a snapshot signature cannot double as a signature over
 anything else the same key signs:
 
 ```
-mypenny-tlog-snapshot-v1\n<seqno>\n<rootHash>\n<timestamp>
+mypenny-tlog-snapshot-v2\n<shard>\n<seqno>\n<rootHash>\n<timestamp>
 ```
+
+Older snapshots written before monthly sharding omit `shard` and verify under
+`mypenny-tlog-snapshot-v1\n<seqno>\n<rootHash>\n<timestamp>`.
 
 `seqno` is a non-negative integer and `rootHash` is 64 lowercase hex characters,
 so none of the fields can contain a newline. The payload is signed with the
