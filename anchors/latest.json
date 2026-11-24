@@ -1,10 +1,10 @@
 {
   "byShard": {
     "legacy": {
-      "seqno": 7399869,
-      "rootHash": "c7a364c148b20824b3d53941257593c26ea3937aa25e8f63d97a517dd0a8a964",
-      "capturedAt": "2026-11-24T04:04:15.215Z",
-      "file": "anchors/2026/11/2026-11-24T040415Z-7399869.json"
+      "seqno": 7399870,
+      "rootHash": "a5f181dfe7c2fde37db8ca1ff21f5fcbb2da223d920fa51b1f17c3137add47e6",
+      "capturedAt": "2026-11-24T05:03:45.523Z",
+      "file": "anchors/2026/11/2026-11-24T050345Z-7399870.json"
     }
   }
 }
