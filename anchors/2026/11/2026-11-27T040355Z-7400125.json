@@ -1,0 +1,7 @@
+{
+  "shard": "legacy",
+  "seqno": 7400125,
+  "rootHash": "0b7580424d0585cd7d9591cf29fc6b5778b64e90a979009670b8761e5aea9d52",
+  "capturedAt": "2026-11-27T04:03:55.091Z",
+  "source": "https://mypenny-transparency-log.mypenny.workers.dev/api/log/legacy/checkpoint"
+}
